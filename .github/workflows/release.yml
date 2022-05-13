@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: 'Type of run to be performed'
+        required: true
+        type: choice
+        options:
+        - dryrun
+        - run
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3.0.2
+        with:
+          # an ad-hoc token (PAT) is need in order to permit the "push" to a protected branch (in this case 'main')
+          # persist-credentials must be true and the same token is used in semantic-release step
+          token: ${{ secrets.SEMANTICRELEASE }}
+          persist-credentials: 'true'
+          # Alternatively, it is possible to disable persist-credentials
+          # and use the ad-hoc token (PAT) in semantic-release step
+          # persist-credentials: 'false'
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v3.1.1
+        with:
+          node-version: 'lts/*'
+
+      # - name: Install dependencies
+      #   run: npx ci
+
+      # semantic-release: it comes pre-installed in GitHub actions by default
+      - name: Install semantic-release extra plugins
+        run: |
+              npm install --save-dev \
+                semantic-release \
+                @semantic-release/commit-analyzer \
+                @semantic-release/changelog \
+                @semantic-release/git \
+                @semantic-release/release-notes-generator \
+                @semantic-release/exec \
+                conventional-changelog-conventionalcommits
+      - name: Create .VERSION file
+        run: echo "There are no relevant changes, so no new version is released" > .VERSION
+
+      - name: Dry-Run
+        if: ${{ github.event.inputs.release-type == 'dryrun' }}
+        env:
+          # ad-hoc token (PAT) in order to permit the push on a protected branch
+          # without protected branches can be use secrets.GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.SEMANTICRELEASE }}
+        run: |
+          npx semantic-release --dry-run --no-ci
+      - name: Release
+        if: ${{ github.event.inputs.release-type == 'run' }}
+        env:
+          # ad-hoc token (PAT) in order to permit the push on a protected branch
+          # without protected branches can be use secrets.GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.SEMANTICRELEASE }}
+        run: |
+          npx semantic-release
+
+      - name: Version
+        id: version
+        run: |
+          nextversion=$(cat .VERSION)
+          echo "::set-output name=nextversion::$nextversion"
+          echo "Next version: $nextversion"
